@@ -254,3 +254,10 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
+
+# mos
+dataset/*
+.cometml-runs/*.zip
+1.7.0
+1.7.9
+yoloki-v5/
