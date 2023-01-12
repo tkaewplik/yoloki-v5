@@ -54,7 +54,6 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 
-
 # movement of crickets in the video (points)
 pts = deque()
 
@@ -153,10 +152,13 @@ def is_time_between(begin_time, end_time, check_time=None):
 @smart_inference_mode()
 def run(
         weights=ROOT / 'yolov5s.pt',  # model path or triton URL
+        dark_condition_weights=ROOT / 'yolov5s.pt',  # model path or triton URL
+        light_condition_weights=ROOT / 'yolov5s.pt',  # model path or triton URL
         source=ROOT / 'data/images',  # file/dir/URL/glob/screen/0(webcam)
         data=ROOT / 'data/coco128.yaml',  # dataset.yaml path
         csv_folder='None',  # model.pt path(s) another model
         condition='dark',
+        stage=2,
         imgsz=(1920, 1080),  # inference size (height, width)
         conf_thres=0.25,  # confidence threshold
         iou_thres=0.45,  # NMS IOU threshold
@@ -205,10 +207,21 @@ def run(
     (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
     # Load model
+    # note: normal situation!
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
+
+    # note: each condition model!
+    if (dark_condition_weights):
+        dc_model = DetectMultiBackend(dark_condition_weights, device=device, dnn=dnn, data=data, fp16=half)
+        dc_stride, dc_names, dc_pt = dc_model.stride, dc_model.names, dc_model.pt
+        dc_imgsz = check_img_size(imgsz, s=stride)  # check image size
+    if (light_condition_weights):
+        lc_model = DetectMultiBackend(dark_condition_weights, device=device, dnn=dnn, data=data, fp16=half)
+        lc_stride, lc_names, lc_pt = lc_model.stride, lc_model.names, lc_model.pt
+        lc_imgsz = check_img_size(imgsz, s=stride)  # check image size
 
     # Dataloader
     bs = 1  # batch_size
@@ -241,7 +254,7 @@ def run(
     data = []
 
     # just to fix!
-    stage = 2
+    # stage = 2
 
     # detecting area
     lower_y = 150
@@ -268,11 +281,11 @@ def run(
         feeder_r = 120
     else:
         # light dark condition!
-        feeder_x = 844
-        feeder_y = 290
+        feeder_x = 1132
+        feeder_y = 484
         feeder_x2 = 1504
         feeder_y2 = 629
-        feeder_r = 150
+        feeder_r = 120
 
     feeder_w = feeder_x2 - feeder_x
     feeder_h = feeder_y2 - feeder_y
@@ -291,16 +304,23 @@ def run(
         water_y2 = 591
     else:
         # light dark condition
-        water_x = 498
-        water_y = 280
-        water_x2 = 744
-        water_y2 = 490
+        water_x = 468
+        water_y = 336
+        water_x2 = 777
+        water_y2 = 555
 
     water_w = water_x2 - water_x
     water_h = water_y2 - water_y
 
     # Run inference
+    # todo: create model for dark and light condition!!
+
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
+    if dark_condition_weights:
+        dc_model.warmup(imgsz=(1 if pt or dc_model.triton else bs, 3, *imgsz))  # warmup
+    if light_condition_weights:
+        lc_model.warmup(imgsz=(1 if pt or lc_model.triton else bs, 3, *imgsz))  # warmup
+
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
     for path, im, im0s, vid_cap, s in dataset:
 
@@ -322,6 +342,13 @@ def run(
                 print("ocr_timestamp(timedelta)", ocr_timestamp)
             else:
                 print("ocr: None")
+
+        # note: separate model here!
+        if condition == 'darklight':
+            if ocr_timestamp is not None and is_time_between(time(9, 0), time(21, 0), ocr_timestamp.time()):
+                model = lc_model
+            else:
+                model = dc_model
 
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
@@ -484,11 +511,11 @@ def run(
                     vid_writer[i].write(im0)
 
         # detect time of the frame!
-        # if frame_number % target_fps == 0:
-        #     # write data to csv file!
-        #     csv_data = [str(ocr_timestamp), str(eating_crickets), str(watering_crickets), str(outside_cirkcets)]
-        #     print("append : ", csv_data)
-        #     data.append(csv_data)
+        if frame_number % target_fps == 0:
+            # write data to csv file!
+            csv_data = [str(ocr_timestamp), str(eating_crickets), str(watering_crickets), str(outside_cirkcets)]
+            print("append : ", csv_data)
+            data.append(csv_data)
         
         # increase frame number for the next round!
         frame_number += 1
@@ -528,10 +555,13 @@ def run(
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'yolov5s.pt', help='model path or triton URL')
+    parser.add_argument('--light-condition-weights', nargs='+', type=str, default=ROOT / 'yolov5s.pt', help='model path or triton URL')
+    parser.add_argument('--dark-condition-weights', nargs='+', type=str, default=ROOT / 'yolov5s.pt', help='model path or triton URL')
     parser.add_argument('--source', type=str, default=ROOT / 'data/images', help='file/dir/URL/glob/screen/0(webcam)')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='(optional) dataset.yaml path')
     parser.add_argument('--csv-folder', nargs='+', type=str, default=None, help='path for csv folder')
     parser.add_argument('--condition', type=str, default='dark', help='(optional) select light condition (default: dark)')
+    parser.add_argument('--stage', type=int, default=2, help='(optional) crickets stage (default: 2)')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
@@ -568,5 +598,7 @@ def main(opt):
 
 
 if __name__ == "__main__":
+    os.system('Xvfb :1 -screen 0 1600x1200x16  &')
+    os.environ['DISPLAY']=':1.0'
     opt = parse_opt()
     main(opt)

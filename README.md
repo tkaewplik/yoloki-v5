@@ -453,3 +453,10 @@ For YOLOv5 bugs and feature requests please visit [GitHub Issues](https://github
 
 [assets]: https://github.com/ultralytics/yolov5/releases
 [tta]: https://github.com/ultralytics/yolov5/issues/303
+
+
+# XServer
+please refer to this link [](https://stackoverflow.com/questions/73362781/qt-qpa-xcb-could-not-connect-to-display-when-using-yolov4-custom-functions)
+
+## maybe working
+- https://gist.github.com/Shivanshu-Gupta/ae67abfa67f6bc8033e361dc119a7d46
